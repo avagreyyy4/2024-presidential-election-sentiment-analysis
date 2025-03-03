@@ -3,7 +3,7 @@ title: "lexicon exploration"
 output: html_document
 date: "2025-02-27"
 ---
-```{r}
+```{r, warning = FALSE, message = FALSE}
 library(readr)
 library(dplyr)
 library(lubridate)
@@ -14,12 +14,14 @@ library(textdata)
 library(tidyr)
 library(scales)
 library(forcats)
+library(wordcloud)
+library(reshape2)
 ```
 
 
 ```{r}
 # load the original data set 
-full_data <- read.csv("/Users/avagrey/desktop/my_data.csv")
+full_data <- read.csv("my_data.csv")
 
 # clean the original data set
 clean_data <- full_data |> 
@@ -81,9 +83,9 @@ head(overall_count, 15) # again, just showing overall values
 Thinking about potential lexicons - between either a politics specific lexicon or a more basic one like NRC.
 
 Will need to think about:
-- negations: could use a basic lexicon then ass additional values + words
+- negations: could use a basic lexicon then add additional values + words
 
-- good that the data is shorter to avoid potentiall zero-ing out 
+- good that the data is shorter to avoid potential zero-ing out 
 
 
 ```{r}
@@ -103,25 +105,53 @@ tidy_month <- clean_data |>
   mutate(detection = cumsum(str_detect(fullText, str_c(months, collapse = "|")))) |>  # Fix parentheses
   ungroup() |>
   unnest_tokens(word, fullText)
+```
 
-nrcfear <- get_sentiments("nrc") |>
-  filter(sentiment == "fear")
+```{r}
+emotion_trends <- function(candidate, emotion){
+  nrc_emoton <- get_sentiments("nrc")|>
+    filter(sentiment == emotion)
+  
+  candidate_emotion <- tidy_candidates |>
+    filter(candidate_mentioned == candidate)|>
+    inner_join(nrc_emoton) |>
+    count(word, sort = TRUE)
+  
+  return(candidate_emotion)
+}
 
-# Use the tidy candidates data (group emotions by candidate) to analze specific emotions
+```
 
-# Here I used an example of fear
-harris_fear <- tidy_candidates |>
-  filter(candidate_mentioned == "Harris") |>
-  inner_join(nrcfear) |>
-  count(word, sort = TRUE)
 
-trump_fear <- tidy_candidates |>
-  filter(candidate_mentioned == "Trump") |>
-  inner_join(nrcfear) |>
-  count(word, sort = TRUE)
+```{r}
+#fear
+emotion_trends("Trump", "fear")
+emotion_trends("Harris", "fear")
+```
 
-harris_fear |> head(10)
-trump_fear |> head(10) # same trend that kamalas may have been more policy related while trump was more character or action related
+```{r}
+emotion_trends("Trump", "anger")
+emotion_trends("Harris", "anger")
+```
+
+```{r}
+emotion_trends("Trump", "disgust")
+emotion_trends("Harris", "disgust")
+```
+
+```{r}
+emotion_trends("Trump", "trust")
+emotion_trends("Harris", "trust")
+```
+
+```{r}
+emotion_trends("Trump", "joy")
+emotion_trends("Harris", "joy")
+```
+
+```{r}
+emotion_trends("Trump", "anticipation")
+emotion_trends("Harris", "anticipation")
 ```
 
 ```{r}
@@ -175,6 +205,7 @@ ggplot(harris_sentiment, aes(x = day, y = sentiment, fill = sentiment > 0)) +
   theme_minimal()
 
 ```
+# Need to be careful with interpreting these values s some words may not have negative sentiments about the candidate but are labeled as negative like assasniation 
 
 I used bing here because it has a simpler "pos" "neg" model
 
@@ -200,24 +231,7 @@ nrc_word_count_trump
 nrc_word_count_harris
 ```
 
-```{r}
-bing_word_count_trump <- tidy_candidates |> 
-  filter(word != "trump", word != "vote") |>  
-  inner_join(get_sentiments("bing"), by = "word") |>  
-  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
-  ungroup()|>
-  filter(candidate_mentioned == "Trump")
 
-bing_word_count_harris <- tidy_candidates |> 
-  filter(word != "trump", word != "vote") |>  
-  inner_join(get_sentiments("bing"), by = "word") |>  
-  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
-  ungroup()|>
-  filter(candidate_mentioned == "Harris")
-
-bing_word_count_trump
-bing_word_count_harris
-```
 
 ```{r}
 nrc_word_count_trump |>
@@ -267,5 +281,44 @@ ungroup()|>
   labs(y = "Contribution to sentiment HARRIS BING",
        x = NULL) +
   coord_flip()
+```
+
+```{r}
+word_cloud_candidate <- function(candidate, sentiment){
+  tidy_candidate <- tidy_candidates |>
+    filter(candidate_mentioned == candidate)|>
+    filter(word != "trump")|>
+    inner_join(get_sentiments(sentiment)) |>
+    count(word, sentiment, sort = TRUE) |>
+    acast(word ~ sentiment, value.var = "n", fill = 0) |>
+    comparison.cloud(colors = c("darkred", "forestgreen"), max.words = 50)
+}
+
+word_cloud_candidate("Trump", "bing")
+word_cloud_candidate("Harris", "bing")
+```
+
+```{r}
+election_sentences <- clean_data |>
+  unnest_tokens(sentence, fullText, token = "sentences")
+
+bingsentiment <- get_sentiments("bing")|>
+    filter(sentiment == "positive")
+  
+word_count <- tidy_candidates |>
+    group_by(candidate_mentioned, month)|>
+    summarize(words = n())
+  
+tidy_candidates |> 
+    semi_join(bingsentiment)|>
+    group_by(candidate_mentioned, month)|>
+    summarize(sentimentwords = n())|>
+    left_join(word_count, by = c("candidate_mentioned", "month")) |>
+    mutate(ratio = sentimentwords/words) |>
+    filter(candidate_mentioned != "Trump, Harris")|>
+    top_n(1)|>
+    ungroup()
+
+
 ```
 
