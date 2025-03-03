@@ -1,0 +1,271 @@
+---
+title: "lexicon exploration"
+output: html_document
+date: "2025-02-27"
+---
+```{r}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tidytext)
+library(stringr)
+library(textdata)
+library(tidyr)
+library(scales)
+library(forcats)
+```
+
+
+```{r}
+# load the original data set 
+full_data <- read.csv("/Users/avagrey/desktop/my_data.csv")
+
+# clean the original data set
+clean_data <- full_data |> 
+  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
+  filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE)) |>  # keep only tweets mentioning either candidate
+  filter(!grepl("-\\s*Kamala Harris", fullText)) |> # remove quotes by either canidate
+  filter(!grepl("-\\s*Donald Trump", fullText)) |>
+  mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
+  mutate(fullText = gsub("@\\w+", "", fullText)) |>  # remove mentions
+  mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
+  mutate(fullText = gsub("[^[:alnum:]' ]", "", fullText)) |>
+  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
+  distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
+  distinct(fullText, .keep_all = TRUE) 
+```
+
+
+```{r}
+# further cleaning to add months and specific candidates mentioned
+valid_months <- month.abb  # built in abbreviation month string
+
+clean_data <- clean_data |> 
+  mutate(month = str_extract(createdAt, paste(valid_months, collapse = "|")))
+
+# Define patterns to match variations of each candidate's name
+trump_pattern <- regex("(trump|donald)", ignore_case = TRUE)
+harris_pattern <- regex("(kamala|harris)", ignore_case = TRUE)
+
+# Create a new column 'candidate_mentioned' based on the patterns
+clean_data <- clean_data |>
+  mutate(candidate_mentioned = case_when(
+    str_detect(fullText, trump_pattern) & str_detect(fullText, harris_pattern) ~ "Trump, Harris",
+    str_detect(fullText, trump_pattern) ~ "Trump",
+    str_detect(fullText, harris_pattern) ~ "Harris"
+  ))
+
+#further cleaning to remove extra tweets not mentioning either candidate
+clean_data <- clean_data |> filter(!is.na(candidate_mentioned))
+```
+
+```{r}
+clean_data <- clean_data |> 
+  mutate(day = day(as.POSIXct(createdAt, format="%a %b %d %H:%M:%S %z %Y", tz="UTC")))
+```
+
+
+
+```{r}
+#tokenize the data
+token_tweets <- clean_data |>
+  unnest_tokens(word, fullText)
+# count the individual word count with no restrictions
+overall_count <- token_tweets |>
+  count(word, sort = TRUE)
+
+head(overall_count, 15) # again, just showing overall values
+```
+
+Thinking about potential lexicons - between either a politics specific lexicon or a more basic one like NRC.
+
+Will need to think about:
+- negations: could use a basic lexicon then ass additional values + words
+
+- good that the data is shorter to avoid potentiall zero-ing out 
+
+
+```{r}
+#Now, working with data to explore candidate specific trends
+candidate_name <- c("Harris", "Trump", "Trump, Harris")
+
+#Group my candidate to be able to analyze specific Trump or Harris Tweets and emotional trends
+tidy_candidates <- clean_data |>
+  group_by(candidate_mentioned) |>
+  mutate(detection = cumsum(str_detect(fullText, str_c(candidate_name, collapse = "|")))) |>  # Fix parentheses
+  ungroup() |>
+  unnest_tokens(word, fullText)
+
+months <- c("Jul", "Aug", "Sep", "Oct", "Nov")
+tidy_month <- clean_data |>
+  group_by(month) |>
+  mutate(detection = cumsum(str_detect(fullText, str_c(months, collapse = "|")))) |>  # Fix parentheses
+  ungroup() |>
+  unnest_tokens(word, fullText)
+
+nrcfear <- get_sentiments("nrc") |>
+  filter(sentiment == "fear")
+
+# Use the tidy candidates data (group emotions by candidate) to analze specific emotions
+
+# Here I used an example of fear
+harris_fear <- tidy_candidates |>
+  filter(candidate_mentioned == "Harris") |>
+  inner_join(nrcfear) |>
+  count(word, sort = TRUE)
+
+trump_fear <- tidy_candidates |>
+  filter(candidate_mentioned == "Trump") |>
+  inner_join(nrcfear) |>
+  count(word, sort = TRUE)
+
+harris_fear |> head(10)
+trump_fear |> head(10) # same trend that kamalas may have been more policy related while trump was more character or action related
+```
+
+```{r}
+#Now, use the tidy month data to analyze positive and negative sentiment trends for each candidate over the five months leading up to the election
+trump_sentiment <- tidy_month |> 
+  filter(candidate_mentioned == "Trump") |>  
+  filter(!word %in% c("trump")) |>  # Exclude words before sentiment join
+  inner_join(get_sentiments("bing"), by = "word") |>  
+  count(month, day, sentiment) |>  
+  spread(sentiment, n, fill = 0) |>  
+  mutate(sentiment = positive - negative)
+
+# Define correct month order
+month_order <- c("Jul", "Aug", "Sep", "Oct", "Nov")
+
+trump_sentiment <- trump_sentiment |> 
+  mutate(month = factor(month, levels = month_order))  # Force chronological order
+
+
+
+ggplot(trump_sentiment, aes(x = day, y = sentiment, fill = sentiment > 0)) + 
+  geom_col(show.legend = FALSE, width = 0.7) +  # Fixed bar width for uniformity
+  facet_wrap(~month, ncol = 2, scales = "free_x") +
+  scale_fill_manual(values = c("red", "green"), labels = c("Negative", "Positive")) +  
+  labs(x = "Day", y = "Sentiment Score", title = "TRUMP Sentiment Over Time") +
+  theme_minimal()
+```
+
+```{r}
+harris_sentiment <- tidy_month |> 
+  filter(candidate_mentioned == "Harris") |>  # Keep only Trump-related data
+  inner_join(get_sentiments("bing")) |>  
+  count(month, day, sentiment) |>  
+  spread(sentiment, n, fill = 0) |>  
+  mutate(sentiment = positive - negative)
+
+
+# Define correct month order
+month_order <- c("Jul", "Aug", "Sep", "Oct", "Nov")
+
+harris_sentiment <- harris_sentiment |> 
+  mutate(month = factor(month, levels = month_order))  # Force chronological order
+
+
+
+ggplot(harris_sentiment, aes(x = day, y = sentiment, fill = sentiment > 0)) + 
+  geom_col(show.legend = FALSE, width = 0.7) +  # Fixed bar width for uniformity
+  facet_wrap(~month, ncol = 2, scales = "free_x") +
+  scale_fill_manual(values = c("red", "green"), labels = c("Negative", "Positive")) +  
+  labs(x = "Day", y = "Sentiment Score", title = "HARRIS Sentiment Over Time") +
+  theme_minimal()
+
+```
+
+I used bing here because it has a simpler "pos" "neg" model
+
+Below I look at NRC words contribution and BING to see what words are driving these values for each candidate
+
+
+```{r}
+nrc_word_count_trump <- tidy_candidates |> 
+  filter(word != "trump", word != "vote") |>  
+  inner_join(get_sentiments("nrc"), by = "word") |>  
+  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
+  ungroup()|>
+  filter(candidate_mentioned == "Trump")
+
+nrc_word_count_harris <- tidy_candidates |> 
+  filter(word != "trump", word != "vote") |>  
+  inner_join(get_sentiments("nrc"), by = "word") |>  
+  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
+  ungroup()|>
+  filter(candidate_mentioned == "Harris")
+
+nrc_word_count_trump
+nrc_word_count_harris
+```
+
+```{r}
+bing_word_count_trump <- tidy_candidates |> 
+  filter(word != "trump", word != "vote") |>  
+  inner_join(get_sentiments("bing"), by = "word") |>  
+  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
+  ungroup()|>
+  filter(candidate_mentioned == "Trump")
+
+bing_word_count_harris <- tidy_candidates |> 
+  filter(word != "trump", word != "vote") |>  
+  inner_join(get_sentiments("bing"), by = "word") |>  
+  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
+  ungroup()|>
+  filter(candidate_mentioned == "Harris")
+
+bing_word_count_trump
+bing_word_count_harris
+```
+
+```{r}
+nrc_word_count_trump |>
+  group_by(sentiment) |>
+  top_n(10) |>
+ungroup()|>
+  mutate(word = reorder(word, n)) |>
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment TRUMP NRC",
+       x = NULL) +
+  coord_flip()
+
+nrc_word_count_harris |>
+  group_by(sentiment) |>
+  top_n(10) |>
+ungroup()|>
+  mutate(word = reorder(word, n)) |>
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment HARRIS NRC",
+       x = NULL) +
+  coord_flip()
+
+bing_word_count_trump |>
+  group_by(sentiment) |>
+  top_n(10) |>
+ungroup()|>
+  mutate(word = reorder(word, n)) |>
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment TRUMP BING",
+       x = NULL) +
+  coord_flip()
+
+bing_word_count_harris |>
+  group_by(sentiment) |>
+  top_n(10) |>
+ungroup()|>
+  mutate(word = reorder(word, n)) |>
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(y = "Contribution to sentiment HARRIS BING",
+       x = NULL) +
+  coord_flip()
+```
+

@@ -1,0 +1,391 @@
+---
+title: "text frequency"
+output: html_document
+date: "2025-02-20"
+---
+
+```{r, warning = FALSE, message = FALSE}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tidytext)
+library(stringr)
+library(textdata)
+library(tidyr)
+library(scales)
+```
+
+
+### Initital Data Cleaning: Pre-Process and Preparing Data
+```{r}
+# load the original data set 
+full_data <- read.csv("/Users/avagrey/desktop/my_data.csv")
+
+# clean the original data set
+clean_data <- full_data |> 
+  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
+   # keep only tweets mentioning either candidate
+  filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE))|>
+  filter(!grepl("-\\s*Kamala Harris", fullText)) |> # remove quotes by either canidate
+  filter(!grepl("-\\s*Donald Trump", fullText)) |>
+  mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
+  mutate(fullText = gsub("@\\w+", "", fullText)) |>  # remove mentions
+  mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
+  mutate(fullText = gsub("[^[:alnum:]' ]", "", fullText)) |>
+  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
+  distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
+  distinct(fullText, .keep_all = TRUE) 
+```
+
+### Further Cleaning to add month and candidate_mentioned columns
+```{r}
+# further cleaning to add months and specific candidates mentioned
+valid_months <- month.abb  # built in abbreviation month string
+
+clean_data <- clean_data |> 
+  mutate(month = str_extract(createdAt, paste(valid_months, collapse = "|")))
+
+# Define patterns to match variations of each candidate's name
+trump_pattern <- regex("(trump|donald)", ignore_case = TRUE)
+harris_pattern <- regex("(kamala|harris)", ignore_case = TRUE)
+
+# Create a new column 'candidate_mentioned' based on the patterns
+clean_data <- clean_data |>
+  mutate(candidate_mentioned = case_when(
+    str_detect(fullText, trump_pattern) & str_detect(fullText, harris_pattern) ~ "Trump, Harris",
+    str_detect(fullText, trump_pattern) ~ "Trump",
+    str_detect(fullText, harris_pattern) ~ "Harris"
+  ))
+
+#further cleaning to remove extra tweets not mentioning either candidate
+clean_data <- clean_data |> filter(!is.na(candidate_mentioned))
+```
+
+
+### Understand aspects of the data
+```{r}
+z <- clean_data |> 
+  group_by(candidate_mentioned) |> 
+  summarize(n = n())
+
+ggplot(z, aes(candidate_mentioned, n)) +  
+  geom_col(show.legend = TRUE) +
+  geom_text(aes(label = n), vjust = -0.5) +
+  theme_minimal()
+```
+
+### Tokenize `fullText` to break up tweets into indivdal words to better understand frequency
+```{r}
+#tokenize the data
+token_tweets <- clean_data |>
+  unnest_tokens(word, fullText)
+# count the individual word count with no restrictions
+overall_count <- token_tweets |>
+  count(word, sort = TRUE)
+
+head(overall_count, 15)
+```
+
+### Visual of top words 
+These make sense because a lot of search words were related to emotional starts like "i think..."
+```{r}
+token_tweets |> count(word, sort = TRUE)|>
+  filter(n > 7900)|>
+  mutate(word = reorder(word, n))|>
+  ggplot(aes(word, n)) + 
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+### First Step: remove basic lexicon stop words to see remaining word frequency
+```{r}
+# take 
+stop_words2 <- stop_words |> filter(lexicon != "SMART")
+
+token_tweets_rmstop <- token_tweets |>
+  anti_join(stop_words)
+```
+
+### overall first looking at common words without stop words
+```{r}
+token_tweets_rmstop |> 
+  count(word, sort = TRUE) |> 
+  slice_max(n, n = 15) |>  
+  mutate(word = reorder(word, n)) |> 
+  ggplot(aes(word, n)) + 
+  geom_col() + 
+  xlab(NULL) + 
+  coord_flip() +
+  labs(title = "Top 15 Most Frequent Words in Tweets without Stop Words")
+
+```
+
+### look at it grouped by the different candidates
+```{r}
+# Count words by candidate mentioned
+plot_stoprm_candidate <- token_tweets_rmstop |>  
+  count(candidate_mentioned, word, sort = TRUE) |>  # Count words by candidate
+  group_by(candidate_mentioned) |>  
+  slice_max(n, n = 15) |>  # Select the top 10 words per candidate
+  ungroup() |>  
+  mutate(word = reorder_within(word, n, candidate_mentioned)) 
+
+# Plot grouped word frequency by candidate
+ggplot(plot_stoprm_candidate, aes(word, n, fill = candidate_mentioned)) +  
+  geom_col(show.legend = TRUE) +  
+  facet_wrap(~candidate_mentioned, scales = "free_y") +  
+  xlab(NULL) +  
+  coord_flip() +  
+  scale_x_reordered() +  
+  labs(title = "Most Common Words in Tweets by Candidate Mentioned",  
+       y = "Word Count", fill = "Candidate Mentioned")
+```
+
+### look at it grouped by the different months
+```{r}
+# Count words by candidate mentioned
+plot_stoprm_candidate <- token_tweets_rmstop |>  
+  count(month, word, sort = TRUE) |>  # Count words by candidate
+  group_by(month) |>  
+  slice_max(n, n = 15) |>  # Select the top 10 words per candidate
+  ungroup() |>  
+  mutate(word = reorder_within(word, n, month),
+         month = factor(month, c("Jul", "Aug", "Sep", "Oct", "Nov"))) 
+
+# Plot grouped word frequency by candidate
+ggplot(plot_stoprm_candidate, aes(word, n, fill = month)) +  # Add missing `+`
+  geom_col(show.legend = TRUE) +  
+  facet_wrap(~month, scales = "free_y") +  # Separate panels per candidate
+  xlab(NULL) +  
+  coord_flip() +  
+  scale_x_reordered() +  # Ensure correct ordering of words
+  labs(title = "Most Common Words in Tweets by Month",  
+       y = "Word Count", fill = "Month")
+```
+
+### Now look at word counts with emotion related words
+```{r}
+# Load NRC sentiment lexicon
+nrc_emotions <- get_sentiments("nrc") |>
+  filter(word != "trump") |>
+  filter(word != "ill") |>
+  filter(word != "president")|>
+  filter(word != "shell")
+
+token_tweets_emotion <- token_tweets |> 
+  inner_join(nrc_emotions, by = "word")
+
+emotion_count <- token_tweets_emotion |>
+  count(word, sort = TRUE)
+```
+
+
+### Overall frequency
+```{r}
+# now looking at emotions words specifically
+token_tweets_emotion |>
+  count(word, sort = TRUE) |> head(15)
+
+token_tweets_emotion |> 
+  count(word, sort = TRUE) |>  # Count occurrences of each word
+  slice_max(n, n = 15) |>  # Select the top 15 most frequent words
+  mutate(word = reorder(word, n)) |>  # Reorder for better visualization
+  ggplot(aes(word, n)) + 
+  geom_col() + 
+  xlab(NULL) + 
+  coord_flip() + 
+  labs(title = "Top 15 Most Frequent Emotion Words in Tweets")
+```
+
+### Look at emotion frequency based by candidate mentions
+```{r}
+# Count emotion-related words by candidate mentioned
+word_counts <- token_tweets_emotion |>  
+  count(candidate_mentioned, word, sort = TRUE) |>  # Count words by candidate
+  group_by(candidate_mentioned) |>  
+  slice_max(n, n = 15) |>  # Select the top 10 words per candidate
+  ungroup() |>  
+  mutate(word = reorder_within(word, n, candidate_mentioned))  # Ensure proper ordering
+
+# Plot grouped word frequency by candidate
+ggplot(word_counts, aes(word, n, fill = candidate_mentioned)) +  
+  geom_col(show.legend = TRUE) +  
+  facet_wrap(~candidate_mentioned, scales = "free_y") +  # Separate panels per candidate
+  xlab(NULL) +  
+  coord_flip() +  
+  scale_x_reordered() +  # Ensure correct ordering of words
+  labs(title = "Most Common Emotion Words in Tweets by Candidate Mentioned",  
+       y = "Word Count", fill = "Candidate Mentioned")
+
+```
+
+### Look at emotion frequency based by month 
+```{r}
+# Count emotion-related words by candidate mentioned
+word_counts <- token_tweets_emotion |>  
+  count(month, word, sort = TRUE) |>  # Count words by candidate
+  group_by(month) |>  
+  slice_max(n, n = 15) |>  # Select the top 10 words per candidate
+  ungroup() |>  
+  mutate(word = reorder_within(word, n, month))  # Ensure proper ordering
+
+# Plot grouped word frequency by candidate
+ggplot(word_counts, aes(word, n, fill = month)) +  
+  geom_col(show.legend = TRUE) +  
+  facet_wrap(~month, scales = "free_y") +  # Separate panels per candidate
+  xlab(NULL) +  
+  coord_flip() +  
+  scale_x_reordered() +  # Ensure correct ordering of words
+  labs(title = "Most Common Emotion Words in Tweets by Candidate Mentioned",  
+       y = "Word Count", fill = "Candidate Mentioned")
+
+```
+
+
+# Changes overtime related to candidates (KAMALA)
+```{r}
+emotion_over_time <- function(df, candidate){
+  word_count <- df |>
+    filter(candidate_mentioned== candidate) |>
+    count(month, word, sort = TRUE) |>
+    group_by(month) |>
+    slice_max(n, n = 15) |> # keep top 10 per month
+    ungroup() |>
+    mutate(word = reorder_within(word, n, month),
+           month = factor(month, c("Jul", "Aug", "Sep", "Oct", "Nov")))
+  
+  ggplot(word_count, aes(word, n, fill = month)) +
+    geom_col(show.legend = TRUE) +
+    facet_wrap(~month, scales = "free_y") + # separate per candidate
+    coord_flip() +
+    scale_x_reordered() + # ensure correct order of words
+    labs(title = paste("Most Common Emotion Words in Tweets for", candidate),
+     y = "Word Count", fill = "Month") +
+    theme(legend.position = "none")
+}
+```
+
+
+```{r}
+emotion_over_time(token_tweets_emotion, "Harris")
+emotion_over_time(token_tweets_emotion, "Trump")
+```
+
+
+```{r}
+emotion_candidate_overtime <- function(df, candidate, emotion) {
+  candidate_clean <- df |>
+    mutate(candidate_mentioned = tolower(candidate_mentioned),
+           word = tolower(word))  # Ensure words are also in lowercase
+
+  token_tweet_candidate <- candidate_clean |>
+    filter(candidate_mentioned == tolower(candidate))
+
+  token_tweet_candidate <- token_tweet_candidate |>
+    mutate(month = factor(month, levels = month.abb))
+
+  monthly_total <- token_tweet_candidate |>
+    count(month)
+
+  monthly_emotion <- token_tweet_candidate |>
+    filter(word == tolower(emotion)) |>
+    count(month, name = "emotion_count")
+
+  monthly_data <- left_join(monthly_emotion, monthly_total, by = "month") |>
+    mutate(references_per_tweet = emotion_count / n) |>
+    arrange(month)  # Sort months properly
+
+  ggplot(monthly_data, aes(x = month, y = references_per_tweet)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    labs(title = paste("Normalized Frequency of '", emotion, "' Emotion Over Time for", candidate),
+         x = "Month",
+         y = paste("Proportion of Tweets Containing '", emotion, "'")) +
+    theme_minimal()
+}
+```
+```{r}
+emotion_candidate_overtime(token_tweets_emotion, "Harris", "excited")
+emotion_candidate_overtime(token_tweets_emotion, "Harris", "hate")
+emotion_candidate_overtime(token_tweets_emotion, "Harris", "trust")
+emotion_candidate_overtime(token_tweets_emotion, "Harris", "anger")
+
+emotion_candidate_overtime(token_tweets_emotion, "Trump", "excited")
+emotion_candidate_overtime(token_tweets_emotion, "Trump", "hate")
+emotion_candidate_overtime(token_tweets_emotion, "Trump", "trust")
+emotion_candidate_overtime(token_tweets_emotion, "Trump", "anger")
+```
+
+
+
+
+
+
+# looking at word overlap
+
+```{r}
+token_tweets_emotion_2 <- token_tweets_emotion |> filter(candidate_mentioned != "Trump, Harris")
+
+frequency <- token_tweets_emotion_2 |> 
+  count(candidate_mentioned, word) |> 
+  group_by(candidate_mentioned) |> 
+  mutate(proportion = n / sum(n)) |> 
+  select(-n) |> 
+  pivot_wider(names_from = candidate_mentioned, values_from = proportion, values_fill = 0)|>
+  filter(Harris > 0 & Trump > 0)
+
+# Plot with both Trump and Harris on a single scatter plot
+ggplot(frequency, aes(x = Harris, y = Trump)) +
+  geom_abline(color = "gray40", lty = 2) +  # Reference diagonal line
+  geom_jitter(aes(color = abs(Harris - Trump)), alpha = 0.3, size = 2.5, width = 0.2, height = 0.2) + 
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5, size = 3) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(low = "blue", high = "red") +  
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(
+    title = "Word Proportions: Trump vs. Harris",
+    x = "Harris",
+    y = "Trump"
+  )
+
+```
+
+```{r}
+# Find words that appear only in Trump tweets (Harris proportion == 0)
+exclusive_trump_words <- token_tweets_emotion_2 |> 
+  count(candidate_mentioned, word) |> 
+  group_by(candidate_mentioned) |> 
+  mutate(proportion = n / sum(n)) |> 
+  select(-n) |> 
+  pivot_wider(names_from = candidate_mentioned, values_from = proportion, values_fill = 0)|>
+  filter(Harris == 0 & Trump > 0) |>
+  arrange(desc(Trump))
+
+exclusive_harris_words <- token_tweets_emotion_2 |> 
+  count(candidate_mentioned, word) |> 
+  group_by(candidate_mentioned) |> 
+  mutate(proportion = n / sum(n)) |> 
+  select(-n) |> 
+  pivot_wider(names_from = candidate_mentioned, values_from = proportion, values_fill = 0)|>
+  filter(Harris > 0 & Trump == 0) |>
+  arrange(desc(Harris))
+
+# Display the exclusive words
+exclusive_trump_words |> head(10)
+exclusive_harris_words |> head(10)
+```
+
+```{r}
+freq2 <- token_tweets_emotion_2 |> 
+  count(candidate_mentioned, word) |> 
+  group_by(candidate_mentioned) |> 
+  mutate(proportion = n / sum(n)) |> 
+  select(-n) |> 
+  pivot_wider(names_from = candidate_mentioned, values_from = proportion, values_fill = 0)
+
+cor.test(freq2$Harris, freq2$Trump)
+```
+
