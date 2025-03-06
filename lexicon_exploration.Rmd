@@ -18,12 +18,14 @@ library(wordcloud)
 library(reshape2)
 library(ggraph)
 library(widyr)
+library(igraph)
 ```
 
 
 ```{r}
 # load the original data set 
-full_data <- read.csv("my_data.csv")
+full_data <- read.csv("/Users/avagrey/Desktop/my_data.csv")
+
 
 # clean the original data set
 clean_data <- full_data |> 
@@ -567,6 +569,7 @@ bigrams_united_harris <- bigrams_filtered_harris |>
 
 bigrams_united <- bind_rows(bigrams_united_trump, bigrams_united_harris)
 
+bigrams_counts <- bind_rows(bigram_trump_count, bigram_harris_count)
 
 bigram_tf_idf<- bigrams_united|>
   count(candidate_mentioned, bigrams) |>
@@ -605,6 +608,7 @@ bigrams_separated|>
   filter(word1 == "not") |>
   count(word1, word2, sort = TRUE)
 ```
+Negation word impact
 
 ```{r}
 not_vader <- bigrams_separated|>
@@ -626,3 +630,53 @@ not_vader |>
   ylab("Sentiment score times number of occurances") +
   coord_flip()
 ```
+
+
+```{r} 
+#not working
+#not_vader2 <- bigrams_separated|>
+  filter(word1 == "really") |>
+  inner_join(vader_data, by = c(word2 = "word"))|>
+  count(word2, sentiment_score, sort = TRUE)|>
+  ungroup() 
+
+#not_vader2
+
+#not_vader2 |>
+#  mutate(contribution = n*sentiment_score) |>
+#  arrange(desc(abs(contribution))) |>
+#  head(20) |>
+#  mutate(word2 = reorder(word2, contribution)) |>
+#  ggplot(aes(word2, n*sentiment_score, fill = n*sentiment_score > 0)) +
+#  geom_col(show.legend = FALSE) +
+#  xlab("Word preceded by \"not\"") +
+#  ylab("Sentiment score times number of occurances") +
+#  coord_flip()
+```
+
+```{r}
+bigrams_separated
+```
+
+
+```{r}
+trump_graph <- bigram_trump_count |> 
+  filter(n > 20) |>  
+  graph_from_data_frame(directed = TRUE) 
+
+trump_graph
+```
+
+```{r}
+set.seed(2025)
+
+ggraph(trump_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point()+
+  geom_node_text(aes(label = name, vjust = 1, hjust = 1))
+  
+```
+
+
+
+
