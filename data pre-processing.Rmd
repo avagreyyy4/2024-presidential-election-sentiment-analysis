@@ -1,0 +1,119 @@
+---
+title: "data pre-processing"
+output: html_document
+date: "2025-03-09"
+---
+
+```{r}
+# load the original data set 
+full_data <- read.csv("my_data.csv")
+#/Users/avagrey/Desktop/
+
+# clean the original data set
+clean_data <- full_data |> 
+  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
+  filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE)) |>  # keep only tweets mentioning either candidate
+  filter(!grepl("-\\s*Kamala Harris", fullText, ignore.case = TRUE)) |> 
+  filter(!grepl("-\\s*Donald Trump", fullText, ignore.case = TRUE)) |>
+  filter(!grepl("Kamala Harris'?s?:", fullText, ignore.case = TRUE)) |>
+  filter(!grepl("Donald Trump'?s?:", fullText, ignore.case = TRUE)) |>
+  mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
+  mutate(fullText = gsub("@\\w+", " ", fullText)) |>  # remove mentions
+  mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
+  mutate(fullText = gsub("[^[:alnum:]' ]", " ", fullText)) |>
+  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
+  distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
+  distinct(fullText, .keep_all = TRUE) 
+```
+
+
+```{r}
+# further cleaning to add months and specific candidates mentioned
+valid_months <- month.abb  # built in abbreviation month string
+
+clean_data <- clean_data |> 
+  mutate(month = str_extract(createdAt, paste(valid_months, collapse = "|")))
+
+# Define patterns to match variations of each candidate's name
+trump_pattern <- regex("(trump|donald)", ignore_case = TRUE)
+harris_pattern <- regex("(kamala|harris)", ignore_case = TRUE)
+
+# Create a new column 'candidate_mentioned' based on the patterns
+clean_data <- clean_data |>
+  mutate(candidate_mentioned = case_when(
+    str_detect(fullText, trump_pattern) & str_detect(fullText, harris_pattern) ~ "Trump, Harris",
+    str_detect(fullText, trump_pattern) ~ "Trump",
+    str_detect(fullText, harris_pattern) ~ "Harris"
+  ))
+
+#further cleaning to remove extra tweets not mentioning either candidate
+clean_data <- clean_data |> filter(!is.na(candidate_mentioned))
+```
+
+```{r}
+clean_data <- clean_data |> 
+  mutate(day = day(as.POSIXct(createdAt, format="%a %b %d %H:%M:%S %z %Y", tz="UTC")))|>
+  filter(candidate_mentioned != "Trump, Harris")|>
+  mutate(Harris = ifelse(candidate_mentioned == "Harris", 1,0),
+         Trump = ifelse(candidate_mentioned == "Trump", 1, 0),
+         July = ifelse(month == "Jul", 1, 0),
+         August = ifelse(month == "Aug", 1,0),
+         September = ifelse(month == "Sep", 1, 0),
+         October = ifelse(month == "Oct", 1, 0),
+         November = ifelse(month == "Nov", 1,0)) |>
+  select(-candidate_mentioned)
+```
+
+```{r}
+clean_data <- clean_data |>
+  select(-author.id, -createdAt, -author.location, -type, -month) |>
+  mutate(likes = (likeCount - min(likeCount)) / (max(likeCount) - min(likeCount)))|>
+  mutate(retweets = (retweetCount - min(retweetCount)) / (max(retweetCount) - min(retweetCount))) |>
+  mutate(views = (viewCount - min(viewCount)) / (max(viewCount) - min(viewCount))) |>
+  mutate(comments = (replyCount - min(replyCount)) / (max(replyCount) - min(replyCount))) |>
+  mutate(total_engagemenmt = retweetCount + likeCount + replyCount,
+         engagements = total_engagemenmt / viewCount) |>
+  mutate(engagement_rate = (engagements - min(engagements)) / (max(engagements) - min(engagements)))|>
+  select(-likeCount, -retweetCount, -replyCount, -viewCount, -engagements, -total_engagemenmt)
+```
+
+```{r}
+set.seed(20250308)
+
+train_indices <- sample(1:nrow(clean_data), 100)
+
+df_train <- clean_data[train_indices, ]
+df_unlabeled <- clean_data[-train_indices, ]
+```
+
+```{r}
+opinionated_df <- data.frame (
+  opinionated = c(0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1,
+                          1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)) |>
+  mutate(id = row_number())
+
+sentiment_df <- data.frame(
+  sentiment = c(0, +1, -1, -1, +1, +1, -1, -1, -1, -1, +1, +1, -1, +1, +1, -1, -1, +1, -1, -1, +1, +1, -1, -1,
+                       -1, -1, -1, -1, -1, -1, -1, +1, +1, +1, +1, 0, 0, +1, -1, -1, -1, +1, -1, -1, -1, -1, +1, 0, -1, -1,
+                       +1, +1, -1, -1, -1, -1, +1, -1, -1, +1, 0, 0, -1, 0, -1, +1, -1, -1, -1, -1, 0, -1, -1, -1,
+                       -1, -1, 0, +1, 0, -1, -1, -1, +1, -1, -1, +1, -1, -1, -1, -1, +1, -1, +1, +1, -1, -1, +1, +1, -1, -1)) |>
+      mutate(id = row_number())
+                       
+```
+
+
+
+```{r}
+df_train <- df_train |> mutate(id = row_number())      
+
+df_train <- inner_join(df_train, opinionated_df, by = "id")
+df_train <- inner_join(df_train, sentiment_df, by = "id")
+```
+
+```{r}
+write.csv(df_train, "C:/Users/agrey25/Downloads/training_data.csv", row.names = FALSE)  # For Windows
+```
+
+

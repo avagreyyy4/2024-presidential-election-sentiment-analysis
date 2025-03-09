@@ -24,7 +24,7 @@ library(igraph)
 
 ```{r}
 # load the original data set 
-full_data <- read.csv("/Users/avagrey/Desktop/my_data.csv")
+full_data <- read.csv("my_data.csv")
 #/Users/avagrey/Desktop/
 
 # clean the original data set
