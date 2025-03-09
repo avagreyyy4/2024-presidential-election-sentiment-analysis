@@ -24,7 +24,7 @@ library(igraph)
 
 ```{r}
 # load the original data set 
-full_data <- read.csv("my_data.csv")
+full_data <- read.csv("/Users/avagrey/Desktop/my_data.csv")
 #/Users/avagrey/Desktop/
 
 # clean the original data set
@@ -337,7 +337,7 @@ total_words <- candidate_words |>
 
 candidate_words <- left_join(candidate_words, total_words)
 
-candidate_words
+candidate_words |> head(20)
 
 ggplot(candidate_words, aes(n/total, fill = candidate_mentioned)) +
   geom_histogram(show.legend = FALSE) +
@@ -352,7 +352,7 @@ freq_by_rank <- candidate_words |>
   mutate(rank = row_number(),
          term_frequency = n/total)
 
-freq_by_rank
+freq_by_rank |> head(20)
 ```
 
 ```{r}
@@ -386,7 +386,7 @@ freq_by_rank |>
 candidate_words <- candidate_words |>
   bind_tf_idf(word, candidate_mentioned, n)
 
-candidate_words
+candidate_words |> head(20)
 #makes sense how stop words have values of zero but then we see candidate names have values since they are far more frequent in specific tweets than others
 
 ```
@@ -485,7 +485,7 @@ trigrams_filtered_trump <- trump_trigrams_separated |>
 trigram_trump_count <- trigrams_filtered_trump |>
   count(word1, word2, word3, sort = TRUE)
 
-trigram_trump_count
+trigram_trump_count |> head(20)
 
 ```
 
@@ -501,7 +501,7 @@ trigrams_filtered_harris <- harris_trigrams_separated |>
 trigram_harris_count <- trigrams_filtered_harris |>
   count(word1, word2, word3, sort = TRUE)
 
-trigram_harris_count
+trigram_harris_count |> head(20)
 ```
 
 #4-gram
@@ -530,7 +530,7 @@ clean_harris_rejoined <- clean_harris_tokens |>
 harris_fourgrams <- clean_harris_rejoined |>
   unnest_tokens(harris_fourgram, clean_text, token = "ngrams", n=3)
 
-harris_fourgrams |> count(harris_fourgram, sort = TRUE)
+harris_fourgrams |> count(harris_fourgram, sort = TRUE) |> head(20)
 ```
 
 
@@ -576,7 +576,7 @@ bigram_tf_idf<- bigrams_united|>
   bind_tf_idf(candidate_mentioned, bigrams, n) |>
   arrange(desc(tf_idf))
 
-bigram_tf_idf
+bigram_tf_idf |> head(30)
 ```
 
 
@@ -606,7 +606,7 @@ bigrams_separated <- bigrams_united |>
 bigrams_separated|>
   group_by(candidate_mentioned)|>
   filter(word1 == "not") |>
-  count(word1, word2, sort = TRUE)
+  count(word1, word2, sort = TRUE) |> head(20)
 ```
 Negation word impact
 
@@ -617,7 +617,7 @@ not_vader <- bigrams_separated|>
   count(word2, sentiment_score, sort = TRUE)|>
   ungroup() 
 
-not_vader
+not_vader |> head(20)
 
 not_vader |>
   mutate(contribution = n*sentiment_score) |>
@@ -635,12 +635,12 @@ not_vader |>
 ```{r} 
 #not working
 not_vader2 <- bigrams_separated|>
-  filter(word1 == "no") |>
+  filter(word1 == "no") |> #check stop words to make sure 
   inner_join(vader_data, by = c(word2 = "word"))|>
   count(word2, sentiment_score, sort = TRUE)|>
   ungroup() 
 
-not_vader2
+not_vader2 |> head(20)
 
 #not_vader2 |>
 #  mutate(contribution = n*sentiment_score) |>
@@ -650,12 +650,12 @@ not_vader2
 #  ggplot(aes(word2, n*sentiment_score, fill = n*sentiment_score > 0)) +
 #  geom_col(show.legend = FALSE) +
 #  xlab("Word preceded by \"not\"") +
-#  ylab("Sentiment score times number of occurances") +
+#  ylab("Sentiment score times number of occurrences") +
 #  coord_flip()
 ```
 
 ```{r}
-bigrams_separated
+bigrams_separated |> head(20)
 ```
 
 
@@ -664,7 +664,7 @@ trump_graph <- bigram_trump_count |>
   filter(n > 20) |>  
   graph_from_data_frame(directed = TRUE) 
 
-trump_graph
+trump_graph |> head(20)
 ```
 
 ```{r}
@@ -699,12 +699,57 @@ ggraph(harris_graph, layout = "fr") +
 ```
 
 ```{r}
-#trump_section_words <- clean_data |>
-  #unnest_tokens(word, fullText)|>
- # filter(!word %in% stop_words$word)
+trump_section_words <- clean_data |>
+  filter(candidate_mentioned == "Trump")|>
+  unnest_tokens(word, fullText)|>
+  filter(!word %in% stop_words$word)
 
-#word_pairs_trump <- trump_section_words |>
-  #pairwise_count(word, candidate_mentioned, sort = TRUE)
+trump_word_cor <- trump_section_words |>
+  group_by(word) |>
+  filter(n() >= 20) |>
+  pairwise_cor(word, X, sort = TRUE)
+
+trump_word_cor |> head(20)
 ```
+
+```{r}
+harris_section_words <- clean_data |>
+  filter(candidate_mentioned == "Harris")|>
+  unnest_tokens(word, fullText)|>
+  filter(!word %in% stop_words$word)
+
+harris_word_cor <- harris_section_words |>
+  group_by(word) |>
+  filter(n() >= 20) |>
+  pairwise_cor(word, X, sort = TRUE)
+
+harris_word_cor |> head(20)
+```
+
+
+```{r}
+#harris had higher correlation of inflation, fix, prices
+#trump had higher occurances of economy and peace, stock, rate
+trump_word_cor |> filter(item1 == "economy") |> head(20)
+harris_word_cor |> filter(item1 == "economy") |> head(20)
+
+```
+
+```{r}
+#describing illegal immigration in tweets about harris were far more extreme in the lanauge than with trump --> illegal immigration and immigrants and citizens
+#harris --> aliens, immigrants, criminals, 
+trump_word_cor |> filter(item1 == "illegal") |> head(20)
+harris_word_cor |> filter(item1 == "illegal") |> head(20)
+```
+
+```{r}
+#instances of woman in trump's tweets were a lot more related to policy while for harris it was related to identity
+trump_word_cor |> filter(item1 == "women") |> head(20)
+harris_word_cor |> filter(item1 == "women") |> head(20)
+```
+
+
+
+
 
 
