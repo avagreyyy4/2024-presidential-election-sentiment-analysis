@@ -4,6 +4,24 @@ output: html_document
 date: "2025-03-09"
 ---
 
+```{r, warning = FALSE, message = FALSE}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tidytext)
+library(stringr)
+library(textdata)
+library(tidyr)
+library(scales)
+library(forcats)
+library(wordcloud)
+library(reshape2)
+library(ggraph)
+library(widyr)
+library(igraph)
+```
+
 ```{r}
 # load the original data set 
 full_data <- read.csv("my_data.csv")
@@ -20,10 +38,12 @@ clean_data <- full_data |>
   mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
   mutate(fullText = gsub("@\\w+", " ", fullText)) |>  # remove mentions
   mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
-  mutate(fullText = gsub("[^[:alnum:]' ]", " ", fullText)) |>
-  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
+  mutate(fullText = gsub("\\.", " ", fullText)) |>  # Replace periods with a space
+  mutate(fullText = gsub("'", "", fullText)) |>  # Remove apostrophes with NO extra space
+  mutate(fullText = gsub("\\s+", " ", fullText)) |>  # Normalize spaces
   distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
-  distinct(fullText, .keep_all = TRUE) 
+  distinct(fullText, .keep_all = TRUE)  
+
 ```
 
 
@@ -80,40 +100,25 @@ clean_data <- clean_data |>
 ```{r}
 set.seed(20250308)
 
-train_indices <- sample(1:nrow(clean_data), 100)
+train_indices <- sample(1:nrow(clean_data), 500)
 
 df_train <- clean_data[train_indices, ]
 df_unlabeled <- clean_data[-train_indices, ]
 ```
 
-```{r}
-opinionated_df <- data.frame (
-  opinionated = c(0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1,
-                          1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)) |>
-  mutate(id = row_number())
-
-sentiment_df <- data.frame(
-  sentiment = c(0, +1, -1, -1, +1, +1, -1, -1, -1, -1, +1, +1, -1, +1, +1, -1, -1, +1, -1, -1, +1, +1, -1, -1,
-                       -1, -1, -1, -1, -1, -1, -1, +1, +1, +1, +1, 0, 0, +1, -1, -1, -1, +1, -1, -1, -1, -1, +1, 0, -1, -1,
-                       +1, +1, -1, -1, -1, -1, +1, -1, -1, +1, 0, 0, -1, 0, -1, +1, -1, -1, -1, -1, 0, -1, -1, -1,
-                       -1, -1, 0, +1, 0, -1, -1, -1, +1, -1, -1, +1, -1, -1, -1, -1, +1, -1, +1, +1, -1, -1, +1, +1, -1, -1)) |>
-      mutate(id = row_number())
-                       
-```
+#next: change trump/vance or vance/trump to just trump or trump-vance
 
 
 
 ```{r}
 df_train <- df_train |> mutate(id = row_number())      
 
-df_train <- inner_join(df_train, opinionated_df, by = "id")
-df_train <- inner_join(df_train, sentiment_df, by = "id")
+x <- df_train |> select(id, fullText)
+
+#df_train <- inner_join(df_train, opinionated_df, by = "id")
+#df_train <- inner_join(df_train, sentiment_df, by = "id")
 ```
 
 ```{r}
-write.csv(df_train, "C:/Users/agrey25/Downloads/training_data.csv", row.names = FALSE)  # For Windows
+#write.csv(df_train, "C:/Users/agrey25/Downloads/training_data.csv", row.names = FALSE)  # For Windows
 ```
-
-
