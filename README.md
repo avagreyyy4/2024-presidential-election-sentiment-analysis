@@ -1,17 +1,17 @@
 # 2024 Presidential Election Sentiment Analysis + Data Exploration
 
-##Summary
+## Summary
 
-##Data
+## Data
 
-##Lexicon Exploration
+## Lexicon Exploration
 
-###Validation
+### Validation
 
-##Initial Modeling
+## Initial Modeling
 
-##Model Analysis
+## Model Analysis
 
-###Validation
+### Validation
 
-##Conclusion
+## Conclusion
