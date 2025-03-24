@@ -24,7 +24,7 @@ library(igraph)
 
 ```{r}
 # load the original data set 
-full_data <- read.csv("my_data.csv")
+full_data <- read.csv("/Users/avagrey/Desktop/my_data.csv")
 #/Users/avagrey/Desktop/
 
 # clean the original data set
@@ -114,11 +114,50 @@ df_unlabeled <- clean_data[-train_indices, ]
 df_train <- df_train |> mutate(id = row_number())      
 
 x <- df_train |> select(id, fullText)
-
 #df_train <- inner_join(df_train, opinionated_df, by = "id")
 #df_train <- inner_join(df_train, sentiment_df, by = "id")
 ```
 
+
 ```{r}
-#write.csv(df_train, "C:/Users/agrey25/Downloads/training_data.csv", row.names = FALSE)  # For Windows
+full_data <- read.csv("/Users/avagrey/Desktop/labeling_full.csv")
+label_data <- full_data |> select("Candidate", "Direct.indirect", Sentiment)
+```
+
+```{r}
+label_data <- label_data |> rename ("direction" = "Direct.indirect") |>
+  mutate(id = row_number()) 
+
+train_ready <- full_join(df_train, label_data)
+
+train_ready2 <- train_ready |>
+  mutate(fullText = gsub("harris/walz", "harris", fullText)) |>
+  mutate(fullText = gsub("&amp;", "&", fullText)) |>
+  mutate(fullText = gsub("trump/vance", "trump", fullText)) |>
+  mutate(fullText = gsub("trump-vance", "trump", fullText)) |>
+  mutate(fullText = gsub("harris-walz", "harris", fullText)) |>
+  mutate(fullText = gsub("biden/harris", "harris", fullText)) 
+```
+
+
+```{r}
+write.csv(train_ready2, "~/Downloads/train_data.csv", row.names = FALSE)
+```
+#about the training data
+```{r}
+label_data |>
+  group_by(Candidate)|>
+  count(sort = TRUE)
+
+label_data |>
+  group_by(direction)|>
+  count(sort = TRUE)
+
+label_data |>
+  group_by(Sentiment)|>
+  count(sort = TRUE)
+
+label_data |>
+  group_by(Candidate, direction, Sentiment)|>
+  count(sort = TRUE)
 ```
