@@ -16,52 +16,11 @@ library(tidyr)
 library(scales)
 ```
 
-
-### Initital Data Cleaning: Pre-Process and Preparing Data
 ```{r}
-# load the original data set 
-full_data <- read.csv("/Users/avagrey/desktop/my_data.csv")
+clean_data <- read_csv("my_data_clean.csv")
 
-# clean the original data set
-clean_data <- full_data |> 
-  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
-   # keep only tweets mentioning either candidate
-  filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE))|>
-  filter(!grepl("-\\s*Kamala Harris", fullText)) |> # remove quotes by either canidate
-  filter(!grepl("-\\s*Donald Trump", fullText)) |>
-  mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
-  mutate(fullText = gsub("@\\w+", "", fullText)) |>  # remove mentions
-  mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
-  mutate(fullText = gsub("[^[:alnum:]' ]", "", fullText)) |>
-  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
-  distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
-  distinct(fullText, .keep_all = TRUE) 
+clean_data <- clean_data |> mutate(id = row_number())
 ```
-
-### Further Cleaning to add month and candidate_mentioned columns
-```{r}
-# further cleaning to add months and specific candidates mentioned
-valid_months <- month.abb  # built in abbreviation month string
-
-clean_data <- clean_data |> 
-  mutate(month = str_extract(createdAt, paste(valid_months, collapse = "|")))
-
-# Define patterns to match variations of each candidate's name
-trump_pattern <- regex("(trump|donald)", ignore_case = TRUE)
-harris_pattern <- regex("(kamala|harris)", ignore_case = TRUE)
-
-# Create a new column 'candidate_mentioned' based on the patterns
-clean_data <- clean_data |>
-  mutate(candidate_mentioned = case_when(
-    str_detect(fullText, trump_pattern) & str_detect(fullText, harris_pattern) ~ "Trump, Harris",
-    str_detect(fullText, trump_pattern) ~ "Trump",
-    str_detect(fullText, harris_pattern) ~ "Harris"
-  ))
-
-#further cleaning to remove extra tweets not mentioning either candidate
-clean_data <- clean_data |> filter(!is.na(candidate_mentioned))
-```
-
 
 ### Understand aspects of the data
 ```{r}
