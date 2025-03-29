@@ -13,15 +13,18 @@ full_data <- read_csv("C:/Users/agrey25/Downloads/my_data.csv")
 # Filter Data Rows -------------------------------------------------------------
 
 clean_data <- full_data |> 
-  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", `author/location`, ignore.case = TRUE)) |> #remove non-US countries
+  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
   filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE)) |>  # keep only tweets mentioning either candidate
-  filter(!grepl("-\\s*Kamala Harris", fullText)) |> # remove quotes by either canidate
-  filter(!grepl("-\\s*Donald Trump", fullText)) |>
+  filter(!grepl("-\\s*Kamala Harris", fullText, ignore.case = TRUE)) |>     
+  filter(!grepl("-\\s*Donald Trump", fullText, ignore.case = TRUE)) |>
+  filter(!grepl("Kamala Harris'?s?:", fullText, ignore.case = TRUE)) |>    
+  filter(!grepl("Donald Trump'?s?:", fullText, ignore.case = TRUE)) |>
   mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
-  mutate(fullText = gsub("@\\w+", "", fullText)) |>  # remove mentions
+  mutate(fullText = gsub("@\\w+", " ", fullText)) |>  # remove mentions
   mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
-  mutate(fullText = gsub("[^[:alnum:]' ]", "", fullText)) |>
-  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
+  mutate(fullText = gsub("\\.", " ", fullText)) |>  # replace periods with a space
+  mutate(fullText = gsub("'", "", fullText)) |>  # remove apostrophes with NO extra space
+  mutate(fullText = gsub("\\s+", " ", fullText)) |>  # normalize spaces
   distinct(fullText, .keep_all = TRUE) |>
   mutate(fullText = gsub("harris/walz", "harris", fullText)) |>
   mutate(fullText = gsub("&amp;", "&", fullText)) |>
