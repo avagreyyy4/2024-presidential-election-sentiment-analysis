@@ -19,59 +19,16 @@ library(reshape2)
 library(ggraph)
 library(widyr)
 library(igraph)
-```
-
-
-```{r}
-# load the original data set 
-full_data <- read.csv("my_data.csv")
-#/Users/avagrey/Desktop/
-
-# clean the original data set
-clean_data <- full_data |> 
-  filter(!grepl("France|Sydney|London|Germany|Dubai|Israel|Ontario|Canada|Toronto|Thaiwan|China|UK|Norway|Europe|sydney|🇨🇦|England|India", author.location, ignore.case = TRUE)) |> #remove non-US countries
-  filter(grepl("Trump|Donald|Harris|Kamala", fullText, ignore.case = TRUE)) |>  # keep only tweets mentioning either candidate
-  filter(!grepl("-\\s*Kamala Harris", fullText)) |> # remove quotes by either canidate
-  filter(!grepl("-\\s*Donald Trump", fullText)) |>
-  mutate(fullText = tolower(fullText)) |>  #convert all text to lower case
-  mutate(fullText = gsub("@\\w+", "", fullText)) |>  # remove mentions
-  mutate(fullText = gsub("#\\w+", "", fullText)) |>  # remove hashtags
-  mutate(fullText = gsub("[^[:alnum:]' ]", "", fullText)) |>
-  mutate(fullText = gsub("\\s+", " ", fullText)) |>   
-  distinct(fullText, author.id, .keep_all = TRUE) |> # remove duplicates 
-  distinct(fullText, .keep_all = TRUE) 
-```
-
-
-```{r}
-# further cleaning to add months and specific candidates mentioned
-valid_months <- month.abb  # built in abbreviation month string
-
-clean_data <- clean_data |> 
-  mutate(month = str_extract(createdAt, paste(valid_months, collapse = "|")))
-
-# Define patterns to match variations of each candidate's name
-trump_pattern <- regex("(trump|donald)", ignore_case = TRUE)
-harris_pattern <- regex("(kamala|harris)", ignore_case = TRUE)
-
-# Create a new column 'candidate_mentioned' based on the patterns
-clean_data <- clean_data |>
-  mutate(candidate_mentioned = case_when(
-    str_detect(fullText, trump_pattern) & str_detect(fullText, harris_pattern) ~ "Trump, Harris",
-    str_detect(fullText, trump_pattern) ~ "Trump",
-    str_detect(fullText, harris_pattern) ~ "Harris"
-  ))
-
-#further cleaning to remove extra tweets not mentioning either candidate
-clean_data <- clean_data |> filter(!is.na(candidate_mentioned))
+library(jsonlite)
+library(purrr)
 ```
 
 ```{r}
-clean_data <- clean_data |> 
-  mutate(day = day(as.POSIXct(createdAt, format="%a %b %d %H:%M:%S %z %Y", tz="UTC")))
+clean_data <- read_csv("my_data_clean.csv")
 ```
-
-
+```{r}
+clean_data <- clean_data |> mutate(id = row_number())
+```
 
 ```{r}
 #tokenize the data
@@ -511,7 +468,7 @@ clean_trump_tokens <- clean_trump |>
   filter(!word %in% stop_words$word)
 
 clean_trump_rejoined <- clean_trump_tokens |>
-  group_by(X) |>  
+  group_by(id) |>  
   summarize(clean_text = paste(word, collapse = " "), .groups = "drop")
 
 trump_fourgrams <- clean_trump_rejoined |>
@@ -524,7 +481,7 @@ clean_harris_tokens <- clean_harris |>
   filter(!word %in% stop_words$word)
 
 clean_harris_rejoined <- clean_harris_tokens |>
-  group_by(X) |>  
+  group_by(id) |>  
   summarize(clean_text = paste(word, collapse = " "), .groups = "drop")
 
 harris_fourgrams <- clean_harris_rejoined |>
@@ -664,7 +621,7 @@ trump_graph <- bigram_trump_count |>
   filter(n > 20) |>  
   graph_from_data_frame(directed = TRUE) 
 
-trump_graph |> head(20)
+trump_graph 
 ```
 
 ```{r}
@@ -707,7 +664,7 @@ trump_section_words <- clean_data |>
 trump_word_cor <- trump_section_words |>
   group_by(word) |>
   filter(n() >= 20) |>
-  pairwise_cor(word, X, sort = TRUE)
+  pairwise_cor(word, id, sort = TRUE)
 
 trump_word_cor |> head(20)
 ```
@@ -721,7 +678,7 @@ harris_section_words <- clean_data |>
 harris_word_cor <- harris_section_words |>
   group_by(word) |>
   filter(n() >= 20) |>
-  pairwise_cor(word, X, sort = TRUE)
+  pairwise_cor(word, id, sort = TRUE)
 
 harris_word_cor |> head(20)
 ```
