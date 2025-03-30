@@ -24,7 +24,7 @@ library(purrr)
 ```
 
 ```{r}
-clean_data <- read_csv("my_data_clean.csv")
+clean_data <- read_csv("my_output.csv")
 ```
 ```{r}
 clean_data <- clean_data |> mutate(id = row_number())
@@ -118,24 +118,6 @@ emotion_trends("Harris", "anticipation")
 Deleted the monthly sentiment scores since they do not encompass well based on individual word usage
 *
 
-```{r}
-vader_data <- read_csv("VADER.csv", col_names = FALSE)
-
-vader_data <- vader_data |> 
-  rename(word = `X1`,
-         sentiment_score = `X2`,
-         standard_deviation = `X3`,
-         individual_score = `X4`) |>
-  slice(442:7504)|>
-  select(1:2) |>
-  mutate(sentiment = case_when(
-    sentiment_score < 0 ~ "Negative",
-    sentiment_score >0 ~ "Positive"
-  ))
-
-head(vader_data, 10)
-```
-
 
 
 ```{r}
@@ -153,19 +135,20 @@ nrc_word_count_harris <- tidy_candidates |>
   ungroup()|>
   filter(candidate_mentioned == "Harris")
 
-vader_word_count_trump <- tidy_candidates |>
-  filter(word != "trump", word != "vote") |>  
-  inner_join(vader_data, by = "word") |>  
-  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
-  ungroup()|>
-  filter(candidate_mentioned == "Trump")
+vader_word_score_trump <- tidy_candidates |>
+  filter(candidate_mentioned == "Trump", word != "trump", word != "vote") |>
+  group_by(word) |>
+  summarise(avg_sentiment = mean(vader_score, na.rm = TRUE), count = n()) |>
+  filter(count >= 5) |>
+  arrange(avg_sentiment)  # Most negative at the top
 
-vader_word_count_harris <- tidy_candidates |>
-  filter(word != "trump", word != "vote") |>  
-  inner_join(vader_data, by = "word") |>  
-  count(candidate_mentioned, word, sentiment, sort = TRUE) |>  # Keep candidate_mentioned
-  ungroup()|>
-  filter(candidate_mentioned == "Harris")
+# For Harris
+vader_word_score_harris <- tidy_candidates |>
+  filter(candidate_mentioned == "Harris", word != "trump", word != "vote") |>
+  group_by(word) |>
+  summarise(avg_sentiment = mean(vader_score, na.rm = TRUE), count = n()) |>
+  filter(count >= 5) |>
+  arrange(avg_sentiment)
 ```
 
 
@@ -223,11 +206,13 @@ vader_word_count_harris |>
 ```
 
 ```{r}
-word_cloud_candidate <- function(candidate){
+word_cloud_candidate <- function(candidate) {
   tidy_candidate <- tidy_candidates |>
-    filter(candidate_mentioned == candidate)|>
-    filter(word != "trump")|>
-    inner_join(vader_data) |>
+    filter(candidate_mentioned == candidate, word != "trump") |>
+    # Join VADER data
+    inner_join(vader_data, by = "word") |>
+    # Bin VADER scores into sentiment labels
+    mutate(sentiment = ifelse(vader_score >= 0, "positive", "negative")) |>
     count(word, sentiment, sort = TRUE) |>
     acast(word ~ sentiment, value.var = "n", fill = 0) |>
     comparison.cloud(colors = c("darkred", "forestgreen"), max.words = 50)
@@ -241,8 +226,8 @@ word_cloud_candidate("Harris")
 election_sentences <- clean_data |>
   unnest_tokens(sentence, fullText, token = "sentences")
 
-vadersentiment <- vader_data|>
-    filter(sentiment == "Positive") 
+vadersentiment <- clean_data|>
+    filter(vader_score < 0) 
   
 word_count <- tidy_candidates |>
     group_by(candidate_mentioned, month)|>
@@ -264,18 +249,22 @@ tidy_candidates |>
 #check frequency for sentiment rather than emotion
 
 ```{r}
-token_tweets_sentiment <- token_tweets |> 
-  inner_join(vader_data, by = "word")
 
-sentiment_2 <- token_tweets_sentiment |> filter(candidate_mentioned != "Trump, Harris")
+# Optional: categorize into sentiment labels
+sentiment_2 <- sentiment_2 |> 
+  filter(vader_score != 0) |>  # optionally remove neutral words
+  mutate(sentiment = ifelse(vader_score >= 0, "positive", "negative"))
 
-freq <- sentiment_2 |>
-  count(candidate_mentioned, word) |> 
+# Frequency comparison weighted by VADER score
+freq <- sentiment_2 |> 
+  group_by(candidate_mentioned, word) |> 
+  summarise(weighted_sentiment = sum(vader_score), .groups = "drop") |> 
   group_by(candidate_mentioned) |> 
-  mutate(proportion = n / sum(n)) |> 
-  select(-n) |> 
+  mutate(proportion = weighted_sentiment / sum(abs(weighted_sentiment))) |> 
+  select(-weighted_sentiment) |> 
   pivot_wider(names_from = candidate_mentioned, values_from = proportion, values_fill = 0)
 
+# Correlation test
 cor.test(freq$Harris, freq$Trump)
 ```
 
@@ -568,48 +557,33 @@ bigrams_separated|>
 Negation word impact
 
 ```{r}
-not_vader <- bigrams_separated|>
+not_vader <- bigrams_separated |>
   filter(word1 == "not") |>
-  inner_join(vader_data, by = c(word2 = "word"))|>
-  count(word2, sentiment_score, sort = TRUE)|>
-  ungroup() 
+  filter(!is.na(vader_score)) |>
+  group_by(word2) |>
+  summarise(
+  n = n(),
+  vader_score = mean(vader_score, na.rm = TRUE)) |>
+  ungroup()
 
+# Preview top 20
 not_vader |> head(20)
 
+# Plot top 20 most sentiment-shifted "not ___" phrases
 not_vader |>
-  mutate(contribution = n*sentiment_score) |>
+  mutate(contribution = n * vader_score) |>
   arrange(desc(abs(contribution))) |>
   head(20) |>
   mutate(word2 = reorder(word2, contribution)) |>
-  ggplot(aes(word2, n*sentiment_score, fill = n*sentiment_score > 0)) +
+  ggplot(aes(word2, contribution, fill = contribution > 0)) +
   geom_col(show.legend = FALSE) +
-  xlab("Word preceded by \"not\"") +
-  ylab("Sentiment score times number of occurances") +
+  xlab('Word preceded by "not"') +
+  ylab("Sentiment score × frequency") +
   coord_flip()
+
 ```
 
 
-```{r} 
-#not working
-not_vader2 <- bigrams_separated|>
-  filter(word1 == "no") |> #check stop words to make sure 
-  inner_join(vader_data, by = c(word2 = "word"))|>
-  count(word2, sentiment_score, sort = TRUE)|>
-  ungroup() 
-
-not_vader2 |> head(20)
-
-#not_vader2 |>
-#  mutate(contribution = n*sentiment_score) |>
-#  arrange(desc(abs(contribution))) |>
-#  head(20) |>
-#  mutate(word2 = reorder(word2, contribution)) |>
-#  ggplot(aes(word2, n*sentiment_score, fill = n*sentiment_score > 0)) +
-#  geom_col(show.legend = FALSE) +
-#  xlab("Word preceded by \"not\"") +
-#  ylab("Sentiment score times number of occurrences") +
-#  coord_flip()
-```
 
 ```{r}
 bigrams_separated |> head(20)
