@@ -72,19 +72,25 @@ Used a two-stage **Random Forest** model:
 
 ---
 
-## Repo Structure
+## Conclusion
 
-sentiment_2024
-┣ data/
-┃ ┣ tweets_original.csv
-┃ ┣ tweets_validation.csv
-┣ models/
-┃ ┗ rf_sentiment_model.pkl
-┣ images/
-┃ ┣ word_freq.png
-┃ ┣ emotion_trends.png
-┃ ┗ confusion_matrix.png
-┣ README.md
-┣ pull_tweets.py
-┣ train_model.py
-┗ analyze_sentiment.py
+The purpose of this project was to contextualize the results of the 2024-Presidential Election by identifying
+differences in how social media view the two major candidates. Discrepancies were found in every stage of
+the analysis. Throughout the lexicon-based approach, there were differences in the polarity of words used in
+tweets about each candidate. While there was high word overlap, the way those words were used to describe
+either candidate were not the same. Harris fell victim to sentiments about her entire administration, while
+Trump benefited from less direct opinions. Similarly, Harris seemed to be judged on her policy views more
+than Trump. Bi-grams identified how views on policy buzzwords in posts mentioning Trump had more
+optimistic undertones, while Harris had more negative sentiments. The model analysis contributed to the
+theme of negative sentiments increasing for Harris and decreasing for Trump over the five months leading up
+to the election. The frequency of negative words and overall sentiment of tweets consistently increased until
+reaching an all time high for Harris in October. Comparatively, Trump benefited from an increase positive
+sentiment specifically in November. While these findings do not predict voter behavior directly, they give
+powerful insights into societal views.
+In addition to sentiment analysis findings, this project also identified strong tools for conducting the
+analysis. Random forests were found to perform the best out of all tried machine learning algorithms.
+Class imbalance had impact on model performance. Lastly, using a lexicon-based approach with a modeling
+approach provides strong insights by combining the understandability of word-level sentiment with the
+predictive power of machine learning. This dual-method analysis allows for a stronger understanding of how
+sentiment is expressed and perceived.
+
