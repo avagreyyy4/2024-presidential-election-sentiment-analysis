@@ -21,15 +21,18 @@ To contextualize the November 2024 election results using sentiment analysis on 
 
 Used **VADER** and **NRC Emotion Lexicon** to evaluate emotional tone and sentiment intensity.
 
-![Word Frequency](images/word_freq.png)
+![Word Frequency](images/harrisemotionmonth.png)
 
 > *In July, Harris was associated with “hope” and “winning”; by October, her posts were linked to “disaster” and “lose”.*
 
-### 3. Emotion Trends
+![Word Frequency](images/Trumpemotionmonth.png)
 
-Tracked shifts in sentiment over time using emotion-specific word frequency and polarity scoring.
+> *Trump saw less severe changes or increases in negative sentiment and benefited from a small increase in positive sentiment*
+### 3. Sentiment Trends
 
-![Emotion Trends](images/emotion_trends.png)
+Tracked shifts in sentiment over time using machine-learning predictions.
+
+![Emotion Trends](images/canpredtime.png)
 
 - **Harris**: Increasing negativity, peaking in October.
 - **Trump**: Gradual shift toward positivity by November.
@@ -48,7 +51,6 @@ Used a two-stage **Random Forest** model:
 | Candidate Model   | 88%      |
 | Sentiment Model   | 75%      |
 
-![Confusion Matrix](images/confusion_matrix.png)
 
 ---
 
