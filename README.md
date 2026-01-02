@@ -94,3 +94,5 @@ approach provides strong insights by combining the understandability of word-lev
 predictive power of machine learning. This dual-method analysis allows for a stronger understanding of how
 sentiment is expressed and perceived.
 
+
+More can be viewed at: [Full Paper](https://scholarship.claremont.edu/cmc_theses/3916/)
